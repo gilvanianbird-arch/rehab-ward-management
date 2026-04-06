@@ -1,4 +1,5 @@
 # rehab-ward-management
+🔗 **デモ：** https://rehab-ward-management.vercel.app
 
 回復期リハビリテーション病棟向けの患者管理Webアプリケーションです。  
 診療報酬の実績指数管理・退院支援・FIMスコア追跡を一元化し、病棟運営の効率化を目的として開発しました。
@@ -67,7 +68,7 @@
 ### 1. リポジトリのクローン
 
 ```bash
-git clone https://github.com/your-username/rehab-ward-management.git
+git clone https://github.com/gilvanianbird-arch/rehab-ward-management.git
 cd rehab-ward-management
 ```
 
