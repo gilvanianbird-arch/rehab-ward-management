@@ -224,64 +224,116 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 p-6">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-2xl font-bold mb-6 text-gray-800">
-          回復期リハ 患者管理
-        </h1>
+    <div className="min-h-screen bg-gray-50 text-gray-900">
 
-        {/* 入力フォーム */}
-        <div className="mb-8 p-4 bg-gray-100 rounded-lg border border-gray-300">
-          <h2 className="font-semibold text-gray-700 mb-3">患者登録</h2>
-          <div className="flex flex-wrap gap-2 items-center">
-            <input
-              placeholder="名前"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="border border-gray-400 bg-white text-gray-900 p-2 rounded w-32"
-            />
-            <select
-              value={disease}
-              onChange={(e) => setDisease(e.target.value)}
-              className="border border-gray-400 bg-white text-gray-900 p-2 rounded"
-            >
-              <option value="脳血管">脳血管</option>
-              <option value="運動器(90日)">運動器(90日)</option>
-              <option value="運動器(60日)">運動器(60日)</option>
-              <option value="廃用">廃用</option>
-            </select>
-            <input
-              type="date"
-              value={admissionDate}
-              onChange={(e) => setAdmissionDate(e.target.value)}
-              className="border border-gray-400 bg-white text-gray-900 p-2 rounded"
-            />
-            <button
-              onClick={addPatient}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium"
-            >
-              登録
-            </button>
+      {/* ヘッダー */}
+      <header className="bg-blue-700 text-white px-6 py-4 shadow-md">
+        <div className="max-w-7xl mx-auto flex items-center gap-3">
+          <div className="text-2xl">🏥</div>
+          <div>
+            <h1 className="text-xl font-bold leading-tight">回復期リハ 患者管理システム</h1>
+            <p className="text-blue-200 text-xs">Rehabilitation Ward Management</p>
           </div>
         </div>
+      </header>
 
-        {/* 患者一覧テーブル */}
-        <div className="overflow-x-auto rounded-lg border border-gray-300">
-          <table className="w-full border-collapse text-sm">
+    <div className="max-w-7xl mx-auto px-4 py-6">
+
+      {/* サマリーカード */}
+      {(() => {
+        const activePatientsAll = patients.filter((p) => p.admission_date)
+        const activePatients = activePatientsAll.filter((p) => p.discharge_status !== '退院済み')
+        const alertPatients = activePatients.filter((p) => isFimPlateau(p) || isConferenceAlert(p))
+        const avgIndex = (() => {
+          const valid = activePatientsAll.filter((p) => {
+            const idx = parseFloat(calcPerformanceIndex(p))
+            return !isNaN(idx)
+          })
+          if (valid.length === 0) return '-'
+          const sum = valid.reduce((acc, p) => acc + parseFloat(calcPerformanceIndex(p)), 0)
+          return (sum / valid.length).toFixed(2)
+        })()
+
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">在棟患者数</p>
+              <p className="text-3xl font-bold text-blue-600">{activePatients.length}<span className="text-sm font-normal text-gray-500 ml-1">名</span></p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">病棟平均実績指数</p>
+              <p className={`text-3xl font-bold ${parseFloat(avgIndex) >= 0.5 ? 'text-green-600' : parseFloat(avgIndex) >= 0.3 ? 'text-orange-500' : 'text-red-600'}`}>
+                {avgIndex}
+              </p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">要対応患者数</p>
+              <p className="text-3xl font-bold text-red-500">{alertPatients.length}<span className="text-sm font-normal text-gray-500 ml-1">名</span></p>
+            </div>
+            <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+              <p className="text-xs text-gray-500 mb-1">退院済み（総数）</p>
+              <p className="text-3xl font-bold text-gray-400">
+                {activePatientsAll.filter((p) => p.discharge_status === '退院済み').length}
+                <span className="text-sm font-normal text-gray-500 ml-1">名</span>
+              </p>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* 入力フォーム */}
+      <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+        <h2 className="font-semibold text-gray-700 mb-3 text-sm">患者登録</h2>
+        <div className="flex flex-wrap gap-2 items-center">
+          <input
+            placeholder="名前"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm w-32"
+          />
+          <select
+            value={disease}
+            onChange={(e) => setDisease(e.target.value)}
+            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
+          >
+            <option value="脳血管">脳血管</option>
+            <option value="運動器(90日)">運動器(90日)</option>
+            <option value="運動器(60日)">運動器(60日)</option>
+            <option value="廃用">廃用症候群</option>
+          </select>
+          <input
+            type="date"
+            value={admissionDate}
+            onChange={(e) => setAdmissionDate(e.target.value)}
+            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
+          />
+          <button
+            onClick={addPatient}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            登録
+          </button>
+        </div>
+      </div>
+
+      {/* 患者一覧テーブル */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
             <thead>
-              <tr className="bg-blue-600 text-white">
-                <th className="p-3 text-left font-semibold">名前</th>
-                <th className="p-3 text-left font-semibold">疾患</th>
-                <th className="p-3 text-left font-semibold">入院日</th>
-                <th className="p-3 text-left font-semibold">在院日数</th>
-                <th className="p-3 text-left font-semibold">残り日数</th>
-                <th className="p-3 text-left font-semibold">目標退院日</th>
-                <th className="p-3 text-left font-semibold">FIM</th>
-                <th className="p-3 text-left font-semibold">実績指数</th>
-                <th className="p-3 text-left font-semibold">退院状況</th>
-                <th className="p-3 text-left font-semibold">カンファ日</th>
-                <th className="p-3 text-left font-semibold">退院先</th>
-                <th className="p-3 text-left font-semibold">操作</th>
+              <tr className="bg-blue-700 text-white">
+                <th className="p-3 text-left font-medium whitespace-nowrap">名前</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">疾患</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">入院日</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">在院日数</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">残り日数</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">目標退院日</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">FIM</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">実績指数</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">退院状況</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">カンファ日</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">退院先</th>
+                <th className="p-3 text-left font-medium whitespace-nowrap">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -296,8 +348,7 @@ export default function Home() {
                     'text-gray-800'
 
                   const perfIndex = parseFloat(calcPerformanceIndex(p))
-                  const predictedIndex = parseFloat(calcPredictedIndex(p))
-                  const indexColor = isNaN(perfIndex) ? 'text-gray-500' :
+                  const indexColor = isNaN(perfIndex) ? 'text-gray-400' :
                     perfIndex >= 0.5 ? 'text-green-600 font-semibold' :
                     perfIndex >= 0.3 ? 'text-orange-500 font-semibold' :
                     'text-red-600 font-semibold'
@@ -312,54 +363,56 @@ export default function Home() {
                   const confAlert = isConferenceAlert(p)
 
                   return (
-                    <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                      {/* 名前 + アラートバッジ */}
-                      <td className="border-b border-gray-200 p-3">
-                        <div className="flex items-center gap-1">
-                          <span className="font-medium text-gray-900">{p.name}</span>
+                    <tr
+                      key={p.id}
+                      className={`border-b border-gray-100 hover:bg-blue-50 transition-colors
+                        ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                    >
+                      <td className="p-3">
+                        <div className="flex flex-wrap items-center gap-1">
+                          <span className="font-medium text-gray-900 whitespace-nowrap">{p.name}</span>
                           {plateau && (
-                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 rounded">FIM↑止</span>
+                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded-full whitespace-nowrap">FIM↑止</span>
                           )}
                           {confAlert && (
-                            <span className="text-xs bg-red-100 text-red-800 px-1 rounded">カンファ</span>
+                            <span className="text-xs bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full whitespace-nowrap">カンファ</span>
                           )}
                         </div>
                       </td>
-                      <td className="border-b border-gray-200 p-3 text-gray-700 text-sm">
+                      <td className="p-3 text-gray-600 whitespace-nowrap">
                         {p.disease === '脳血管' ? '脳血管' :
                          p.disease === '運動器(90日)' ? '運動器(90日)' :
                          p.disease === '運動器(60日)' ? '運動器(60日)' :
-                         p.disease}
+                         p.disease === '廃用' ? '廃用' : p.disease}
                       </td>
-                      <td className="border-b border-gray-200 p-3 text-gray-700">
+                      <td className="p-3 text-gray-600 whitespace-nowrap">
                         {p.admission_date
                           ? new Date(p.admission_date).toLocaleDateString('ja-JP', {
                               year: 'numeric', month: '2-digit', day: '2-digit'
                             })
                           : '-'}
                       </td>
-                      <td className="border-b border-gray-200 p-3 text-gray-800">
+                      <td className="p-3 text-gray-800 whitespace-nowrap">
                         {calcDays(p.admission_date)}日
                       </td>
-                      <td className={`border-b border-gray-200 p-3 ${remainingColor}`}>
+                      <td className={`p-3 whitespace-nowrap ${remainingColor}`}>
                         {remaining}日
                       </td>
-                      <td className="border-b border-gray-200 p-3 text-gray-700">
+                      <td className="p-3 text-gray-600 whitespace-nowrap">
                         {calcTargetDischargeDate(p)}
                       </td>
-                      <td className="border-b border-gray-200 p-3 text-gray-700 font-mono text-sm">
+                      <td className="p-3 font-mono text-gray-700 whitespace-nowrap">
                         {p.fim_initial ?? '-'} → {p.fim_total ?? '-'} → {p.fim_target ?? '-'}
                       </td>
-                      {/* 実績指数（現在 / 予測） */}
-                      <td className={`border-b border-gray-200 p-3 font-mono ${indexColor}`}>
+                      <td className={`p-3 font-mono whitespace-nowrap ${indexColor}`}>
                         <div>{calcPerformanceIndex(p)}</div>
                         <div className="text-xs text-gray-400">予測:{calcPredictedIndex(p)}</div>
                       </td>
-                      <td className="border-b border-gray-200 p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <select
                           value={p.discharge_status ?? '未開始'}
                           onChange={(e) => updateDischargeStatus(p.id, e.target.value)}
-                          className={`border rounded px-2 py-1 text-sm font-medium
+                          className={`border rounded-lg px-2 py-1 text-xs font-medium
                             ${p.discharge_status === '退院済み' ? 'bg-green-100 text-green-800 border-green-300' :
                               p.discharge_status === '進行中' ? 'bg-blue-100 text-blue-800 border-blue-300' :
                               'bg-gray-100 text-gray-700 border-gray-300'}
@@ -370,23 +423,21 @@ export default function Home() {
                           <option value="退院済み">退院済み</option>
                         </select>
                       </td>
-                      {/* カンファ日 */}
-                      <td className="border-b border-gray-200 p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <input
                           type="date"
                           value={p.last_conference_date ?? ''}
                           onChange={(e) => updateConference(p.id, e.target.value)}
-                          className={`border rounded px-2 py-1 text-sm
+                          className={`border rounded-lg px-2 py-1 text-xs
                             ${confAlert ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}
                           `}
                         />
                       </td>
-                      {/* 退院先 */}
-                      <td className="border-b border-gray-200 p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <select
                           value={p.discharge_direction ?? '未定'}
                           onChange={(e) => updateDischargeDirection(p.id, e.target.value)}
-                          className={`border rounded px-2 py-1 text-sm
+                          className={`border rounded-lg px-2 py-1 text-xs
                             ${p.discharge_direction === '未定' ? 'border-orange-300 bg-orange-50 text-orange-800' : 'border-gray-300 bg-white text-gray-700'}
                           `}
                         >
@@ -396,10 +447,9 @@ export default function Home() {
                           <option value="転院">転院</option>
                         </select>
                       </td>
-                      {/* 操作 */}
-                      <td className="border-b border-gray-200 p-3">
+                      <td className="p-3 whitespace-nowrap">
                         <div className="flex flex-col gap-1">
-                          <span className={`text-xs text-center rounded px-1 py-0.5 ${scoreColor}`}>
+                          <span className={`text-xs text-center rounded-full px-2 py-0.5 ${scoreColor}`}>
                             スコア:{score}
                           </span>
                           <div className="flex gap-2">
@@ -410,13 +460,13 @@ export default function Home() {
                                 setFimCurrent(p.fim_total ?? '')
                                 setFimTarget(p.fim_target ?? '')
                               }}
-                              className="text-blue-600 hover:underline text-sm"
+                              className="text-blue-600 hover:text-blue-800 text-xs underline whitespace-nowrap"
                             >
                               FIM編集
                             </button>
                             <button
                               onClick={() => deletePatient(p.id, p.name)}
-                              className="text-red-500 hover:underline text-sm"
+                              className="text-red-500 hover:text-red-700 text-xs underline whitespace-nowrap"
                             >
                               削除
                             </button>
@@ -429,82 +479,66 @@ export default function Home() {
             </tbody>
           </table>
 
-          {editingPatient && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-              <div className="bg-white rounded-lg p-6 w-80 shadow-xl">
-                <h2 className="text-lg font-bold mb-4 text-gray-800">
-                  FIM編集：{editingPatient.name}
-                </h2>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      入院時FIM（運動項目合計）
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={91}
-                      value={fimInitial}
-                      onChange={(e) => setFimInitial(e.target.value)}
-                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
-                   />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      現在FIM（運動項目合計）
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={91}
-                      value={fimCurrent}
-                      onChange={(e) => setFimCurrent(e.target.value)}
-                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
-                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      退院時目標FIM（運動項目合計）
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={91}
-                      value={fimTarget}
-                      onChange={(e) => setFimTarget(e.target.value)}
-                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mt-6">
-                  <button
-                    onClick={updateFim}
-                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium"
-                  >
-                    保存
-                  </button>
-                  <button
-                    onClick={() => setEditingPatient(null)}
-                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded font-medium"
-                  >
-                    キャンセル
-                  </button>
-                </div>
-              </div>
-            </div>
-         )}
-
           {patients.filter((p) => p.admission_date).length === 0 && (
-            <p className="text-gray-500 text-center py-8">
-              患者データがありません
-            </p>
+            <p className="text-gray-400 text-center py-12">患者データがありません</p>
           )}
         </div>
       </div>
     </div>
-  )
+
+    {/* FIM編集モーダル */}
+    {editingPatient && (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl p-6 w-80 shadow-2xl">
+          <h2 className="text-lg font-bold mb-4 text-gray-800">
+            FIM編集：{editingPatient.name}
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">入院時FIM（運動項目合計）</label>
+              <input
+                type="number" min={0} max={91}
+                value={fimInitial}
+                onChange={(e) => setFimInitial(e.target.value)}
+                className="border border-gray-300 rounded-lg p-2 w-full text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">現在FIM（運動項目合計）</label>
+              <input
+                type="number" min={0} max={91}
+                value={fimCurrent}
+                onChange={(e) => setFimCurrent(e.target.value)}
+                className="border border-gray-300 rounded-lg p-2 w-full text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">退院時目標FIM（運動項目合計）</label>
+              <input
+                type="number" min={0} max={91}
+                value={fimTarget}
+                onChange={(e) => setFimTarget(e.target.value)}
+                className="border border-gray-300 rounded-lg p-2 w-full text-gray-900"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-6">
+            <button
+              onClick={updateFim}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition-colors"
+            >
+              保存
+            </button>
+            <button
+              onClick={() => setEditingPatient(null)}
+              className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-800 py-2 rounded-lg font-medium transition-colors"
+            >
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)
 }
