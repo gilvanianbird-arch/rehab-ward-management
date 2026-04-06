@@ -1,59 +1,510 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabase'
+import { supabase } from '../lib/supabase'
 
 export default function Home() {
   const [patients, setPatients] = useState<any[]>([])
+  const [name, setName] = useState('')
+  const [disease, setDisease] = useState('脳血管')
+  const [admissionDate, setAdmissionDate] = useState('')
+  const [editingPatient, setEditingPatient] = useState<any | null>(null)
+  const [fimInitial, setFimInitial] = useState('')
+  const [fimCurrent, setFimCurrent] = useState('')
+  const [fimTarget, setFimTarget] = useState('')
+
+  function calcDays(dateString: string): number {
+    if (!dateString) return 0
+      const nowJST = new Date(
+      new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' })
+    )
+    const todayJST = new Date(
+      nowJST.getFullYear(),
+      nowJST.getMonth(),
+      nowJST.getDate()
+    )
+
+    const admission = new Date(dateString)
+    const admissionDate = new Date(
+      admission.getFullYear(),
+      admission.getMonth(),
+      admission.getDate()
+    )
+
+    if (isNaN(admissionDate.getTime())) return 0
+
+    const diff = todayJST.getTime() - admissionDate.getTime()
+    return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1
+  }
+
+  function calcRemainingDays(p: any): number {
+    if (!p.admission_date || !p.target_days) return 0
+    return p.target_days - calcDays(p.admission_date)
+  }
+
+  // 目標退院日を計算（入院日 + target_days）
+  function calcTargetDischargeDate(p: any): string {
+    if (!p.admission_date || !p.target_days) return '-'
+    const admission = new Date(p.admission_date)
+    admission.setDate(admission.getDate() + p.target_days - 1)
+    return admission.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+  }
+
+  // 疾患別の目標入院日数をイジるのはここ！！
+  function getDiseaseParams(disease: string): { targetDays: number; limitDays: number } {
+    if (disease === '脳血管') return { targetDays: 120, limitDays: 150 }
+    if (disease === '運動器(90日)') return { targetDays: 80, limitDays: 90 }
+    if (disease === '廃用') return { targetDays: 70, limitDays: 90 }
+    return { targetDays: 50, limitDays: 60 }
+  }
+
+  // 実績指数（現在）= FIM利得（退院時目標-入院時）÷ 目標入院日数 × 入院上限日数
+  function calcPerformanceIndex(p: any): string {
+    const { targetDays, limitDays } = getDiseaseParams(p.disease)
+    if (p.fim_initial == null || p.fim_target == null) return '-'
+    const fimGain = p.fim_target - p.fim_initial
+    if (fimGain <= 0) return '0.00'
+    return (fimGain / targetDays * limitDays).toFixed(2)
+  }
+
+  // 予測実績指数（目標退院日時点も同じ計算式）
+  function calcPredictedIndex(p: any): string {
+    return calcPerformanceIndex(p)
+  }
 
   useEffect(() => {
     fetchPatients()
   }, [])
 
+  // FIM頭打ち判定（前回値との差が3点未満）
+  function isFimPlateau(p: any): boolean {
+    if (p.fim_previous == null || p.fim_total == null) return false
+    return (p.fim_total - p.fim_previous) <= 3
+  }
+
+  // カンファ未実施アラート（方向性が未定の患者）
+  function isConferenceAlert(p: any): boolean {
+    if (p.discharge_direction && p.discharge_direction !== '未定') return false
+    if (!p.last_conference_date) return true
+    const last = new Date(p.last_conference_date)
+    const nowJST = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }))
+    const diff = Math.floor((nowJST.getTime() - last.getTime()) / (1000 * 60 * 60 * 24))
+    return diff >= 14
+  }
+
+  // 退院促進スコア（高いほど要対応）
+  function calcDischargeScore(p: any): number {
+    let score = 0
+    if (isFimPlateau(p)) score += 3
+    if (isConferenceAlert(p)) score += 2
+    if (p.discharge_direction === '未定') score += 2
+    const remaining = calcRemainingDays(p)
+    if (remaining <= 14 && remaining > 0) score += 2
+    if (remaining <= 0) score += 3
+    return score
+  }
+
   async function fetchPatients() {
     const { data, error } = await supabase.from('patients').select('*')
-
     if (error) {
-      console.error(error)
+      console.error('fetch error:', error)
     } else {
-      setPatients(data)
+      setPatients(data || [])
     }
   }
 
   async function addPatient() {
+    if (!name || !admissionDate) {
+      alert('名前と入院日を入力してください')
+      return
+    }
+
     const { error } = await supabase.from('patients').insert([
       {
-        name: 'テスト患者',
-        disease: '脳血管',
-        admission_days: 30,
+        name,
+        disease,
+        admission_date: admissionDate,
         fim_total: 80,
         fim_initial: 70,
-        target_days: 110,
+        target_days:
+          disease === '脳血管' ? 120 :
+          disease === '運動器(90日)' ? 80 :
+          disease === '廃用' ? 70 :
+          50,
         discharge_status: '未開始'
       }
     ])
 
-    if (!error) fetchPatients()
+    if (error) {
+      console.error('insert error:', error)
+      alert('登録に失敗しました')
+      return
+    }
+
+    setName('')
+    setAdmissionDate('')
+    setDisease('脳血管')
+    fetchPatients()
+  }
+
+  async function updateFim() {
+    if (!editingPatient) return
+
+    const { error } = await supabase
+      .from('patients')
+      .update({
+        fim_initial: Number(fimInitial),
+        fim_total: Number(fimCurrent),
+        fim_target: Number(fimTarget),
+      })
+      .eq('id', editingPatient.id)
+
+    if (error) {
+      console.error('update error:', error)
+      alert('更新に失敗しました')
+      return
+    }
+
+    setEditingPatient(null)
+    fetchPatients()
+  }
+
+  async function updateDischargeStatus(id: number, status: string) {
+    const { error } = await supabase
+      .from('patients')
+      .update({ discharge_status: status })
+      .eq('id', id)
+
+    if (error) {
+      console.error('status update error:', error)
+      alert('更新に失敗しました')
+      return
+    }
+
+    fetchPatients()
+  }
+
+  async function deletePatient(id: number, name: string) {
+    if (!confirm(`${name}さんのデータを削除しますか？`)) return
+
+    const { error } = await supabase
+      .from('patients')
+      .delete()
+      .eq('id', id)
+
+    if (error) {
+      console.error('delete error:', error)
+      alert('削除に失敗しました')
+      return
+    }
+
+    fetchPatients()
+  }
+
+  async function updateConference(id: number, date: string) {
+    const { error } = await supabase
+      .from('patients')
+      .update({ last_conference_date: date })
+      .eq('id', id)
+    if (error) { console.error(error); return }
+    fetchPatients()
+  }
+
+  async function updateDischargeDirection(id: number, direction: string) {
+    const { error } = await supabase
+      .from('patients')
+      .update({ discharge_direction: direction })
+      .eq('id', id)
+    if (error) { console.error(error); return }
+    fetchPatients()
   }
 
   return (
-    <div className="p-6">
-      <h1 className="text-xl mb-4">患者一覧</h1>
+    <div className="min-h-screen bg-white text-gray-900 p-6">
+      <div className="max-w-5xl mx-auto">
+        <h1 className="text-2xl font-bold mb-6 text-gray-800">
+          回復期リハ 患者管理
+        </h1>
 
-      <button
-        onClick={addPatient}
-        className="bg-blue-500 text-white px-4 py-2 rounded mb-4"
-      >
-        テスト追加
-      </button>
+        {/* 入力フォーム */}
+        <div className="mb-8 p-4 bg-gray-100 rounded-lg border border-gray-300">
+          <h2 className="font-semibold text-gray-700 mb-3">患者登録</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              placeholder="名前"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="border border-gray-400 bg-white text-gray-900 p-2 rounded w-32"
+            />
+            <select
+              value={disease}
+              onChange={(e) => setDisease(e.target.value)}
+              className="border border-gray-400 bg-white text-gray-900 p-2 rounded"
+            >
+              <option value="脳血管">脳血管</option>
+              <option value="運動器(90日)">運動器(90日)</option>
+              <option value="運動器(60日)">運動器(60日)</option>
+              <option value="廃用">廃用</option>
+            </select>
+            <input
+              type="date"
+              value={admissionDate}
+              onChange={(e) => setAdmissionDate(e.target.value)}
+              className="border border-gray-400 bg-white text-gray-900 p-2 rounded"
+            />
+            <button
+              onClick={addPatient}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium"
+            >
+              登録
+            </button>
+          </div>
+        </div>
 
-      <ul>
-        {patients.map((p) => (
-          <li key={p.id}>
-            {p.name} / {p.admission_days}日 / FIM:{p.fim_total}
-          </li>
-        ))}
-      </ul>
+        {/* 患者一覧テーブル */}
+        <div className="overflow-x-auto rounded-lg border border-gray-300">
+          <table className="w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-blue-600 text-white">
+                <th className="p-3 text-left font-semibold">名前</th>
+                <th className="p-3 text-left font-semibold">疾患</th>
+                <th className="p-3 text-left font-semibold">入院日</th>
+                <th className="p-3 text-left font-semibold">在院日数</th>
+                <th className="p-3 text-left font-semibold">残り日数</th>
+                <th className="p-3 text-left font-semibold">目標退院日</th>
+                <th className="p-3 text-left font-semibold">FIM</th>
+                <th className="p-3 text-left font-semibold">実績指数</th>
+                <th className="p-3 text-left font-semibold">退院状況</th>
+                <th className="p-3 text-left font-semibold">カンファ日</th>
+                <th className="p-3 text-left font-semibold">退院先</th>
+                <th className="p-3 text-left font-semibold">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {patients
+                .filter((p) => p.admission_date)
+                .sort((a, b) => calcDischargeScore(b) - calcDischargeScore(a))
+                .map((p, i) => {
+                  const remaining = calcRemainingDays(p)
+                  const remainingColor =
+                    remaining <= 0 ? 'text-red-600 font-bold' :
+                    remaining <= 10 ? 'text-orange-500 font-semibold' :
+                    'text-gray-800'
+
+                  const perfIndex = parseFloat(calcPerformanceIndex(p))
+                  const predictedIndex = parseFloat(calcPredictedIndex(p))
+                  const indexColor = isNaN(perfIndex) ? 'text-gray-500' :
+                    perfIndex >= 0.5 ? 'text-green-600 font-semibold' :
+                    perfIndex >= 0.3 ? 'text-orange-500 font-semibold' :
+                    'text-red-600 font-semibold'
+
+                  const score = calcDischargeScore(p)
+                  const scoreColor =
+                    score >= 6 ? 'bg-red-100 text-red-800' :
+                    score >= 3 ? 'bg-orange-100 text-orange-800' :
+                    'bg-gray-100 text-gray-600'
+
+                  const plateau = isFimPlateau(p)
+                  const confAlert = isConferenceAlert(p)
+
+                  return (
+                    <tr key={p.id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                      {/* 名前 + アラートバッジ */}
+                      <td className="border-b border-gray-200 p-3">
+                        <div className="flex items-center gap-1">
+                          <span className="font-medium text-gray-900">{p.name}</span>
+                          {plateau && (
+                            <span className="text-xs bg-yellow-100 text-yellow-800 px-1 rounded">FIM↑止</span>
+                          )}
+                          {confAlert && (
+                            <span className="text-xs bg-red-100 text-red-800 px-1 rounded">カンファ</span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="border-b border-gray-200 p-3 text-gray-700 text-sm">
+                        {p.disease === '脳血管' ? '脳血管' :
+                         p.disease === '運動器(90日)' ? '運動器(90日)' :
+                         p.disease === '運動器(60日)' ? '運動器(60日)' :
+                         p.disease}
+                      </td>
+                      <td className="border-b border-gray-200 p-3 text-gray-700">
+                        {p.admission_date
+                          ? new Date(p.admission_date).toLocaleDateString('ja-JP', {
+                              year: 'numeric', month: '2-digit', day: '2-digit'
+                            })
+                          : '-'}
+                      </td>
+                      <td className="border-b border-gray-200 p-3 text-gray-800">
+                        {calcDays(p.admission_date)}日
+                      </td>
+                      <td className={`border-b border-gray-200 p-3 ${remainingColor}`}>
+                        {remaining}日
+                      </td>
+                      <td className="border-b border-gray-200 p-3 text-gray-700">
+                        {calcTargetDischargeDate(p)}
+                      </td>
+                      <td className="border-b border-gray-200 p-3 text-gray-700 font-mono text-sm">
+                        {p.fim_initial ?? '-'} → {p.fim_total ?? '-'} → {p.fim_target ?? '-'}
+                      </td>
+                      {/* 実績指数（現在 / 予測） */}
+                      <td className={`border-b border-gray-200 p-3 font-mono ${indexColor}`}>
+                        <div>{calcPerformanceIndex(p)}</div>
+                        <div className="text-xs text-gray-400">予測:{calcPredictedIndex(p)}</div>
+                      </td>
+                      <td className="border-b border-gray-200 p-3">
+                        <select
+                          value={p.discharge_status ?? '未開始'}
+                          onChange={(e) => updateDischargeStatus(p.id, e.target.value)}
+                          className={`border rounded px-2 py-1 text-sm font-medium
+                            ${p.discharge_status === '退院済み' ? 'bg-green-100 text-green-800 border-green-300' :
+                              p.discharge_status === '進行中' ? 'bg-blue-100 text-blue-800 border-blue-300' :
+                              'bg-gray-100 text-gray-700 border-gray-300'}
+                          `}
+                        >
+                          <option value="未開始">未開始</option>
+                          <option value="進行中">進行中</option>
+                          <option value="退院済み">退院済み</option>
+                        </select>
+                      </td>
+                      {/* カンファ日 */}
+                      <td className="border-b border-gray-200 p-3">
+                        <input
+                          type="date"
+                          value={p.last_conference_date ?? ''}
+                          onChange={(e) => updateConference(p.id, e.target.value)}
+                          className={`border rounded px-2 py-1 text-sm
+                            ${confAlert ? 'border-red-400 bg-red-50' : 'border-gray-300 bg-white'}
+                          `}
+                        />
+                      </td>
+                      {/* 退院先 */}
+                      <td className="border-b border-gray-200 p-3">
+                        <select
+                          value={p.discharge_direction ?? '未定'}
+                          onChange={(e) => updateDischargeDirection(p.id, e.target.value)}
+                          className={`border rounded px-2 py-1 text-sm
+                            ${p.discharge_direction === '未定' ? 'border-orange-300 bg-orange-50 text-orange-800' : 'border-gray-300 bg-white text-gray-700'}
+                          `}
+                        >
+                          <option value="未定">未定</option>
+                          <option value="自宅">自宅</option>
+                          <option value="施設">施設</option>
+                          <option value="転院">転院</option>
+                        </select>
+                      </td>
+                      {/* 操作 */}
+                      <td className="border-b border-gray-200 p-3">
+                        <div className="flex flex-col gap-1">
+                          <span className={`text-xs text-center rounded px-1 py-0.5 ${scoreColor}`}>
+                            スコア:{score}
+                          </span>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingPatient(p)
+                                setFimInitial(p.fim_initial ?? '')
+                                setFimCurrent(p.fim_total ?? '')
+                                setFimTarget(p.fim_target ?? '')
+                              }}
+                              className="text-blue-600 hover:underline text-sm"
+                            >
+                              FIM編集
+                            </button>
+                            <button
+                              onClick={() => deletePatient(p.id, p.name)}
+                              className="text-red-500 hover:underline text-sm"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+            </tbody>
+          </table>
+
+          {editingPatient && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-80 shadow-xl">
+                <h2 className="text-lg font-bold mb-4 text-gray-800">
+                  FIM編集：{editingPatient.name}
+                </h2>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      入院時FIM（運動項目合計）
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={91}
+                      value={fimInitial}
+                      onChange={(e) => setFimInitial(e.target.value)}
+                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
+                   />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      現在FIM（運動項目合計）
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={91}
+                      value={fimCurrent}
+                      onChange={(e) => setFimCurrent(e.target.value)}
+                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
+                     />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      退院時目標FIM（運動項目合計）
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={91}
+                      value={fimTarget}
+                      onChange={(e) => setFimTarget(e.target.value)}
+                      className="border border-gray-400 rounded p-2 w-full text-gray-900"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mt-6">
+                  <button
+                    onClick={updateFim}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 rounded font-medium"
+                  >
+                    保存
+                  </button>
+                  <button
+                    onClick={() => setEditingPatient(null)}
+                    className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded font-medium"
+                  >
+                    キャンセル
+                  </button>
+                </div>
+              </div>
+            </div>
+         )}
+
+          {patients.filter((p) => p.admission_date).length === 0 && (
+            <p className="text-gray-500 text-center py-8">
+              患者データがありません
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
