@@ -1,9 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { createSupabaseBrowserClient } from '../lib/supabase-browser'
+const supabase = createSupabaseBrowserClient()
 
 export default function Home() {
+  const supabase = createSupabaseBrowserClient()
   const [patients, setPatients] = useState<any[]>([])
   const [name, setName] = useState('')
   const [disease, setDisease] = useState('脳血管')
@@ -228,12 +230,23 @@ export default function Home() {
 
       {/* ヘッダー */}
       <header className="bg-blue-700 text-white px-6 py-4 shadow-md">
-        <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <div className="text-2xl">🏥</div>
-          <div>
-            <h1 className="text-xl font-bold leading-tight">回復期リハ 患者管理システム</h1>
-            <p className="text-blue-200 text-xs">Rehabilitation Ward Management</p>
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-2xl">🏥</div>
+            <div>
+              <h1 className="text-xl font-bold leading-tight">回復期リハ 患者管理システム</h1>
+              <p className="text-blue-200 text-xs">Rehabilitation Ward Management</p>
+            </div>
           </div>
+          <button
+            onClick={async () => {
+            await supabase.auth.signOut()
+            window.location.href = '/login'
+            }}
+            className="text-sm bg-blue-800 hover:bg-blue-900 px-4 py-2 rounded-lg transition"
+          >
+            ログアウト
+          </button>
         </div>
       </header>
 
