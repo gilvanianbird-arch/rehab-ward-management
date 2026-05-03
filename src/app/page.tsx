@@ -6,6 +6,20 @@ const supabase = createSupabaseBrowserClient()
 
 export default function Home() {
   const supabase = createSupabaseBrowserClient()
+  const [userRole, setUserRole] = useState<string | null>(null)
+  useEffect(() => {
+    const fetchRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      const { data } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      setUserRole(data?.role ?? null)
+    }
+    fetchRole()
+  }, [])
   const [patients, setPatients] = useState<any[]>([])
   const [name, setName] = useState('')
   const [disease, setDisease] = useState('脳血管')
@@ -295,39 +309,41 @@ export default function Home() {
       })()}
 
       {/* 入力フォーム */}
-      <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
-        <h2 className="font-semibold text-gray-700 mb-3 text-sm">患者登録</h2>
-        <div className="flex flex-wrap gap-2 items-center">
-          <input
-            placeholder="名前"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm w-32"
-          />
-          <select
-            value={disease}
-            onChange={(e) => setDisease(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
-          >
-            <option value="脳血管">脳血管</option>
-            <option value="運動器(90日)">運動器(90日)</option>
-            <option value="運動器(60日)">運動器(60日)</option>
-            <option value="廃用">廃用症候群</option>
-          </select>
-          <input
-            type="date"
-            value={admissionDate}
-            onChange={(e) => setAdmissionDate(e.target.value)}
-            className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
-          />
-          <button
-            onClick={addPatient}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            登録
-          </button>
+      {userRole === 'admin' && (
+        <div className="mb-6 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+          <h2 className="font-semibold text-gray-700 mb-3 text-sm">患者登録</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              placeholder="名前"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm w-32"
+            />
+            <select
+              value={disease}
+              onChange={(e) => setDisease(e.target.value)}
+              className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
+            >
+              <option value="脳血管">脳血管</option>
+              <option value="運動器(90日)">運動器(90日)</option>
+              <option value="運動器(60日)">運動器(60日)</option>
+              <option value="廃用">廃用症候群</option>
+            </select>
+            <input
+              type="date"
+              value={admissionDate}
+              onChange={(e) => setAdmissionDate(e.target.value)}
+              className="border border-gray-300 bg-white text-gray-900 p-2 rounded-lg text-sm"
+            />
+            <button
+              onClick={addPatient}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              登録
+            </button>
+            </div>
         </div>
-      </div>
+      )}
 
       {/* 患者一覧テーブル */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -465,25 +481,27 @@ export default function Home() {
                           <span className={`text-xs text-center rounded-full px-2 py-0.5 ${scoreColor}`}>
                             スコア:{score}
                           </span>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingPatient(p)
-                                setFimInitial(p.fim_initial ?? '')
-                                setFimCurrent(p.fim_total ?? '')
-                                setFimTarget(p.fim_target ?? '')
-                              }}
-                              className="text-blue-600 hover:text-blue-800 text-xs underline whitespace-nowrap"
-                            >
-                              FIM編集
-                            </button>
-                            <button
-                              onClick={() => deletePatient(p.id, p.name)}
-                              className="text-red-500 hover:text-red-700 text-xs underline whitespace-nowrap"
-                            >
-                              削除
-                            </button>
-                          </div>
+                          {userRole === 'admin' && (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setEditingPatient(p)
+                                  setFimInitial(p.fim_initial ?? '')
+                                  setFimCurrent(p.fim_total ?? '')
+                                  setFimTarget(p.fim_target ?? '')
+                                }}
+                                className="text-blue-600 hover:text-blue-800 text-xs underline whitespace-nowrap"
+                              >
+                                FIM編集
+                              </button>
+                              <button
+                                onClick={() => deletePatient(p.id, p.name)}
+                                className="text-red-500 hover:text-red-700 text-xs underline whitespace-nowrap"
+                              >
+                                削除
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </td>
                     </tr>
