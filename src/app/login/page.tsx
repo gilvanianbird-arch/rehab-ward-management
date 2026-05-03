@@ -19,6 +19,18 @@ export default function LoginPage() {
     router.push("/");
   };
 
+  const handleDemoLogin = async () => {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: "viewer@rehab-demo.com",
+      password: "rehab-demo.com",
+    });
+    if (error) {
+      setError("デモログインに失敗しました");
+      return;
+    }
+    router.push("/");
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="bg-white p-8 rounded-2xl shadow-md w-full max-w-sm">
@@ -40,10 +52,29 @@ export default function LoginPage() {
         />
         <button
           onClick={handleLogin}
-          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition mb-3"
         >
           ログイン
         </button>
+
+        <div className="relative my-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200" />
+          </div>
+          <div className="relative flex justify-center text-xs text-gray-400">
+            <span className="bg-white px-2">または</span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleDemoLogin}
+          className="w-full bg-gray-100 text-gray-700 py-2 rounded-lg hover:bg-gray-200 transition text-sm font-medium"
+        >
+          🔍 デモとして体験する（閲覧のみ）
+        </button>
+        <p className="text-xs text-gray-400 text-center mt-2">
+          編集・削除機能は制限されています
+        </p>
       </div>
     </div>
   );
